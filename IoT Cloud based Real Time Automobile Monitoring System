@@ -1,0 +1,174 @@
+#include <ESP8266WiFi.h>
+
+const char *ssid = "iot123"; // Replace with your WiFi SSID
+const char *password = "shreyash1234"; // Replace with your WiFi password
+
+const char *host = "api.thingspeak.com";
+const String apiKey = "ZY52ZQ6YWNPOP0M9"; // Enter your ThingSpeak API key
+
+const int lm35Pin = A0; // LM35 temperature sensor connected to A0
+
+WiFiClient client;
+
+const int motor1Pin1 = D0; // Connect to IN1 on L293D for motor 1
+const int motor1Pin2 = D1; // Connect to IN2 on L293D for motor 1
+const int motor2Pin1 = D2; // Connect to IN3 on L293D for motor 2
+const int motor2Pin2 = D3; // Connect to IN4 on L293D for motor 2
+
+const int irSensorPin = D4; // IR sensor output pin
+
+const int switch25Pin = D5; // Switch for 25% level
+const int switch50Pin = D6; // Switch for 50% level
+const int switch75Pin = D7; // Switch for 75% level
+
+bool objectDetected = false; // Initialize as not detected
+
+
+void setup() {
+
+ 
+pinMode(motor1Pin1, OUTPUT);
+  pinMode(motor1Pin2, OUTPUT);
+  pinMode(motor2Pin1, OUTPUT);
+  pinMode(motor2Pin2, OUTPUT);
+
+  pinMode(irSensorPin, INPUT);
+
+  pinMode(switch25Pin, INPUT);
+  pinMode(switch50Pin, INPUT);
+  pinMode(switch75Pin, INPUT);
+  
+    digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, LOW);
+  
+
+  
+  Serial.begin(115200);
+  delay(10);
+
+  // Connect to WiFi
+  Serial.println();
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+
+    
+
+  delay(1000);
+}
+
+void loop() {
+
+   if (digitalRead(irSensorPin) == LOW) { // Object detected by IR sensor
+    stopMotor(); // Stop the motor
+    Serial.println("Object detected, motor stopped.");
+  }
+
+  else 
+{
+  float temperature = readTemperature();
+
+  Serial.print("Temperature: ");
+  Serial.println(temperature);
+
+   int level = getLevel();
+  Serial.print("Level: ");
+  Serial.print(level);
+  Serial.println("%");
+
+  
+if (digitalRead(irSensorPin) == LOW) { // Object detected by IR sensor
+    stopMotor(); // Stop the motor
+    Serial.println("Object detected, motor stopped.");
+
+    objectDetected = 5; // Set object detected flag     
+  }
+
+  else {
+       // Drive motor forward
+  digitalWrite(motor1Pin1, HIGH);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, HIGH);
+  digitalWrite(motor2Pin2, LOW);
+
+ // delay (200);
+
+  Serial.println("No object detected, motor running forward.");
+
+  objectDetected = 1; // No object detected
+  
+  }
+
+  if (client.connect(host, 80)) {
+//    String url = "/update?api_key=" + apiKey + "&field1=" + String(temperature)+ "&field2=" + String(level)"&field3=" + String(objectDetected);
+ String url = "/update?api_key=" + apiKey + "&field1=" + String(temperature) + "&field2=" + String(level) + "&field3=" + String(objectDetected);
+ //    String url = "/update?api_key=" + apiKey + "&field1=" + String(temperature) + "&field2=" + String(level);
+    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+                 "Host: " + host + "\r\n" +
+                 "Connection: close\r\n\r\n");
+
+    Serial.println("Sending data to ThingSpeak...");
+
+  
+
+    unsigned long timeout = millis();
+    while (client.available() == 0) {
+      if (millis() - timeout > 50) {
+        Serial.println(">>> Client Timeout !");
+        client.stop();
+
+                return;
+        
+      }
+    }
+
+    while (client.available()) {
+      String line = client.readStringUntil('\r');
+      Serial.print(line);
+    }
+    Serial.println();
+  } else {
+    Serial.println("Connection to ThingSpeak failed...");
+  }
+  client.stop();
+
+ // delay(15000); // Update ThingSpeak every 15 seconds
+}
+}
+
+int getLevel() {
+  if (digitalRead(switch25Pin) == LOW) {
+    return 25;
+  } else if (digitalRead(switch50Pin) == LOW) {
+    return 50;
+  } else if (digitalRead(switch75Pin) == LOW) {
+    return 75;
+  } else {
+    return 0; // Default level if no switch is pressed
+  }
+}
+
+void stopMotor() {
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, LOW);
+}
+
+float readTemperature() {
+  int sensorValue = analogRead(lm35Pin);
+  float voltage = sensorValue * (2.12 / 1023.0); // Convert ADC value to voltage
+  float tempC = (voltage + 0.2) * 100.0; // LM35 output voltage to temperature in Celsius
+  return tempC;
+}
